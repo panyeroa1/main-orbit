@@ -1,17 +1,17 @@
-Task ID: T-0017
-Title: Fix Runtime Error and Clean Build Cache
+Task ID: T-0018
+Title: Fix Deepgram Transcription Stopping
 Status: DONE
 Owner: Miles
 
 Start log:
-- Timestamp: 2025-12-31 12:30
-- Plan: Resolve runtime TypeError and remove unused imports.
+- Timestamp: 2025-12-31 12:40
+- Plan: Add keepalive and auto-reconnect to Deepgram WebSocket.
 
 End log:
-- Timestamp: 2025-12-31 12:35
+- Timestamp: 2025-12-31 12:45
 - Changed:
-  - Removed unused `useCallback` import from `meeting-room.tsx`.
-  - Cleaned `.next` build cache to resolve runtime error.
-  - Committed and pushed to `main-orbit`.
-- Tests: Dev server running successfully on port 3001.
+  - Added 5-second keepalive ping to prevent Deepgram timeout.
+  - Implemented auto-reconnect (2s delay) on socket close/error.
+  - Cleaned up interval on disconnect.
+- Tests: Build passed successfully.
 - Status: DONE
