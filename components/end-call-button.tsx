@@ -27,7 +27,7 @@ export const EndCallButton = () => {
 
           router.push("/");
         }}
-        className="bg-red-500"
+        className="bg-red-500 hover:bg-red-600 rounded-[5px] h-11 transition-all active:scale-95"
       >
         End call for everyone
       </Button>

@@ -431,24 +431,21 @@ export const MeetingRoom = () => {
 
         <button
           onClick={() => setIsTranslatorOpen(true)}
+          className={cn(
+            "relative",
+            controlButtonClasses,
+            captionsEnabled
+              ? "bg-emerald-500/80 hover:bg-emerald-500"
+              : "bg-white/5 hover:bg-white/15"
+          )}
           title="Live Translator"
         >
-          <div
-            className={cn(
-              "relative cursor-pointer",
-              controlButtonClasses,
-              captionsEnabled
-                ? "bg-emerald-500/80 hover:bg-emerald-500"
-                : "bg-white/5 hover:bg-white/15"
-            )}
-          >
-            <Languages size={20} className="text-white" />
-            {captionsEnabled && (
-              <span className="absolute -right-1 -top-1 rounded-full bg-white px-1 text-[10px] font-bold text-black">
-                CC
-              </span>
-            )}
-          </div>
+          <Languages size={20} className="text-white" />
+          {captionsEnabled && (
+            <span className="absolute -right-1 -top-1 rounded-full bg-white px-1 text-[10px] font-bold text-black">
+              CC
+            </span>
+          )}
         </button>
 
         <DropdownMenu>
@@ -474,20 +471,17 @@ export const MeetingRoom = () => {
 
         <button
           onClick={() => setIsTtsFeedEnabled((prev) => !prev)}
+          className={cn(
+            controlButtonClasses,
+            "w-auto px-4 gap-2",
+            isTtsFeedEnabled
+              ? "bg-emerald-500/80 hover:bg-emerald-500"
+              : "bg-white/5 hover:bg-white/15"
+          )}
           title="Translator TTS (Supabase feed)"
         >
-          <div
-            className={cn(
-              controlButtonClasses,
-              "cursor-pointer",
-              isTtsFeedEnabled
-                ? "bg-emerald-500/80 hover:bg-emerald-500"
-                : "bg-white/5 hover:bg-white/15"
-            )}
-          >
-            <Volume2 size={20} className="text-white" />
-            <span className="ml-2 text-xs font-semibold">Translator</span>
-          </div>
+          <Volume2 size={20} className="text-white" />
+          <span className="text-xs font-semibold">Translator</span>
         </button>
 
         <CallStatsButton />
@@ -496,11 +490,10 @@ export const MeetingRoom = () => {
           onClick={() =>
             setShowParticipants((prevShowParticipants) => !prevShowParticipants)
           }
+          className={controlButtonClasses}
           title="Show participants"
         >
-          <div className={cn(controlButtonClasses, "cursor-pointer")}>
-            <Users size={20} className="text-white" />
-          </div>
+          <Users size={20} className="text-white" />
         </button>
 
         {!isPersonalRoom && <EndCallButton />}
