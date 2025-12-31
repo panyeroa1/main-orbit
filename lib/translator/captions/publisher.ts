@@ -133,6 +133,16 @@ export const createCaptionPublisher = (options: CaptionPublisherOptions) => {
       onResult: handleResult,
       onError: (error) => {
         console.error("Caption publisher error (web speech):", error);
+        // Fallback to Deepgram if Web Speech fails and key is present.
+        if (hasDeepgramKey) {
+          try {
+            sttRef.current.stop();
+          } catch {
+            // ignore
+          }
+          sttRef.current = buildDeepgram();
+          sttRef.current.start();
+        }
       },
       lang: sourceLang,
     });
@@ -156,9 +166,9 @@ export const createCaptionPublisher = (options: CaptionPublisherOptions) => {
 
   const sttRef: { current: SpeechToTextProvider } = {
     current:
-      hasDeepgramKey && typeof window !== "undefined"
-        ? buildDeepgram()
-        : buildWebSpeech(),
+      typeof window !== "undefined"
+        ? buildWebSpeech()
+        : buildDeepgram(),
   };
 
   const start = () => {
