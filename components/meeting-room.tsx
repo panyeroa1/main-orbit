@@ -13,7 +13,7 @@ import {
 import { Languages, LayoutList, Users } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   DropdownMenu,
@@ -68,6 +68,32 @@ export const MeetingRoom = () => {
   );
   const setTargetLang = useTranslatorStore((state) => state.setTargetLang);
   const setShowOriginal = useTranslatorStore((state) => state.setShowOriginal);
+
+  const playLatestSavedTranslation = useCallback(async () => {
+    try {
+      const res = await fetch("/api/translation/latest");
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        translations?: Array<{ id: string; translated_text?: string }>;
+      };
+      const latest = data.translations?.[0];
+      if (!latest || !latest.translated_text) return;
+      if (latest.id === lastTranslationIdRef.current) return;
+
+      lastTranslationIdRef.current = latest.id;
+
+      await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: latest.translated_text,
+          lang: targetLang,
+        }),
+      });
+    } catch (error) {
+      console.error("Failed to play saved translation", error);
+    }
+  }, [targetLang]);
   const setSpeakerLang = useTranslatorStore((state) => state.setSpeakerLang);
   const setTtsEnabled = useTranslatorStore((state) => state.setTtsEnabled);
   const setTtsVoice = useTranslatorStore((state) => state.setTtsVoice);
@@ -184,7 +210,6 @@ export const MeetingRoom = () => {
       speakerUserId: localParticipant.userId,
       speakerName: localParticipant.name ?? localParticipant.userId,
       sourceLang: speakerLang,
-      shouldCapture: () => !useTranslatorStore.getState().isTtsPlaying,
     });
 
     publisherRef.current = publisher;
@@ -304,31 +329,6 @@ export const MeetingRoom = () => {
       }
     };
 
-    const playLatestSavedTranslation = async () => {
-      try {
-        const res = await fetch("/api/translation/latest");
-        if (!res.ok) return;
-        const data = (await res.json()) as {
-          translations?: Array<{ id: string; translated_text?: string }>;
-        };
-        const latest = data.translations?.[0];
-        if (!latest || !latest.translated_text) return;
-        if (latest.id === lastTranslationIdRef.current) return;
-
-        lastTranslationIdRef.current = latest.id;
-
-        await fetch("/api/tts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            text: latest.translated_text,
-            lang: targetLang,
-          }),
-        });
-      } catch (error) {
-        console.error("Failed to play saved translation", error);
-      }
-    };
 
     const handleCaptionPayload = async (payload: {
       type?: string;
