@@ -99,7 +99,9 @@ body::before {
   background: transparent;
 }
 
-.str-video__call-controls__button {
+.str-video__call-controls__button,
+.str-video__call-controls button,
+.str-video__call-stats-button {
   height: 44px;
   width: 44px;
   border-radius: 5px !important;
@@ -108,7 +110,9 @@ body::before {
   transition: background-color 150ms ease, transform 150ms ease;
 }
 
-.str-video__call-controls__button:hover {
+.str-video__call-controls__button:hover,
+.str-video__call-controls button:hover,
+.str-video__call-stats-button:hover {
   background-color: rgba(255, 255, 255, 0.16);
   transform: translateY(-1px);
 }

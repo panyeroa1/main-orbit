@@ -28,6 +28,7 @@ import { TranslatorModal } from "@/components/translator/translator-modal";
 import { createCaptionPublisher } from "@/lib/translator/captions/publisher";
 import { cn } from "@/lib/utils";
 import { useTranslatorStore } from "@/store/use-translator";
+import { Volume2 } from "lucide-react";
 
 import { EndCallButton } from "./end-call-button";
 import { Loader } from "./loader";
@@ -44,6 +45,8 @@ export const MeetingRoom = () => {
   const [showParticipants, setShowParticipants] = useState(false);
   const [layout, setLayout] = useState<CallLayoutType>("speaker-left");
   const [isTranslatorOpen, setIsTranslatorOpen] = useState(false);
+  const [isTtsFeedEnabled, setIsTtsFeedEnabled] = useState(false);
+  const lastTranslationIdRef = useRef<string | null>(null);
 
   const call = useCall();
   const { user, isLoaded } = useUser();
@@ -301,6 +304,32 @@ export const MeetingRoom = () => {
       }
     };
 
+    const playLatestSavedTranslation = async () => {
+      try {
+        const res = await fetch("/api/translation/latest");
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          translations?: Array<{ id: string; translated_text?: string }>;
+        };
+        const latest = data.translations?.[0];
+        if (!latest || !latest.translated_text) return;
+        if (latest.id === lastTranslationIdRef.current) return;
+
+        lastTranslationIdRef.current = latest.id;
+
+        await fetch("/api/tts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: latest.translated_text,
+            lang: targetLang,
+          }),
+        });
+      } catch (error) {
+        console.error("Failed to play saved translation", error);
+      }
+    };
+
     const handleCaptionPayload = async (payload: {
       type?: string;
       v?: number;
@@ -386,7 +415,45 @@ export const MeetingRoom = () => {
         unsubscribe();
       }
     };
-  }, [call, localParticipant?.userId, updateCaptionTranslation, upsertCaption]);
+  }, [
+    call,
+    localParticipant?.userId,
+    updateCaptionTranslation,
+    upsertCaption,
+    targetLang,
+  ]);
+
+  useEffect(() => {
+    if (!isTtsFeedEnabled) return;
+    const poll = async () => {
+      try {
+        const res = await fetch("/api/translation/latest");
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          translations?: Array<{ id: string; translated_text?: string }>;
+        };
+        const latest = data.translations?.[0];
+        if (!latest || !latest.translated_text) return;
+        if (latest.id === lastTranslationIdRef.current) return;
+        lastTranslationIdRef.current = latest.id;
+        await fetch("/api/tts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: latest.translated_text,
+            lang: targetLang,
+          }),
+        });
+      } catch (error) {
+        console.error("Failed to play saved translation", error);
+      }
+    };
+
+    const interval = setInterval(() => {
+      void poll();
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [isTtsFeedEnabled, targetLang]);
 
   if (callingState !== CallingState.JOINED) return <Loader />;
 
@@ -466,6 +533,24 @@ export const MeetingRoom = () => {
                 CC
               </span>
             )}
+          </div>
+        </button>
+
+        <button
+          onClick={() => setIsTtsFeedEnabled((prev) => !prev)}
+          title="Translator TTS (Supabase feed)"
+        >
+          <div
+            className={cn(
+              controlButtonClasses,
+              "cursor-pointer",
+              isTtsFeedEnabled
+                ? "bg-emerald-500/80 hover:bg-emerald-500"
+                : "bg-white/5 hover:bg-white/15"
+            )}
+          >
+            <Volume2 size={20} className="text-white" />
+            <span className="ml-2 text-xs font-semibold">Translator</span>
           </div>
         </button>
 
