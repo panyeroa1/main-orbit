@@ -26,7 +26,7 @@ export async function GET(req: Request) {
 
   const { data, error } = await supabase
     .from("transcriptions")
-    .select("id, text, source_lang, created_at")
+    .select("id, text, created_at")
     .eq("room_name", meetingId)
     .order("created_at", { ascending: false })
     .limit(1);

@@ -272,6 +272,14 @@ export const MeetingRoom = () => {
       upsertCaption(caption);
 
       if (caption.isFinal && meetingId) {
+        // 1. Persist raw transcript
+        void fetch("/api/transcripts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...caption, meetingId }),
+        });
+
+        // 2. Translate and persist translation
         try {
           const response = await fetch("/api/translate", {
             method: "POST",
@@ -280,6 +288,7 @@ export const MeetingRoom = () => {
               text: caption.text,
               sourceLang: caption.sourceLang,
               targetLang,
+              meetingId,
             }),
           });
           if (response.ok) {
@@ -292,7 +301,7 @@ export const MeetingRoom = () => {
             }
           }
         } catch (error) {
-          console.error("translate+persist failed", error);
+          console.error("Broadcaster translation/persistence failed", error);
         }
       }
     };
@@ -328,59 +337,32 @@ export const MeetingRoom = () => {
     const poll = async () => {
       try {
         const res = await fetch(
-          `/api/transcriptions/latest?meetingId=${encodeURIComponent(
+          `/api/translation/latest?meetingId=${encodeURIComponent(
             meetingId
-          )}`
+          )}&targetLang=${encodeURIComponent(targetLang)}`
         );
         if (!res.ok) return;
         const data = (await res.json()) as {
-          transcriptions?: Array<{
+          translations?: Array<{
             id: string;
-            text?: string;
-            source_lang?: string;
+            translated_text?: string;
           }>;
         };
-        const latest = data.transcriptions?.[0];
-        if (!latest) return;
+        const latest = data.translations?.[0];
+        if (!latest || !latest.translated_text) return;
         if (latest.id === lastTranslationIdRef.current) return;
         lastTranslationIdRef.current = latest.id;
-
-        if (!latest.text) return;
-
-        let textToSpeak = latest.text;
-
-        if (targetLang && latest.source_lang && targetLang !== latest.source_lang) {
-          try {
-            const translateRes = await fetch("/api/translate", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                text: latest.text,
-                sourceLang: latest.source_lang ?? "auto",
-                targetLang,
-              }),
-            });
-            if (translateRes.ok) {
-              const body = (await translateRes.json()) as {
-                translatedText?: string;
-              };
-              textToSpeak = body.translatedText || textToSpeak;
-            }
-          } catch (error) {
-            console.error("Translation for TTS failed", error);
-          }
-        }
 
         await fetch("/api/tts", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            text: textToSpeak,
+            text: latest.translated_text,
             lang: targetLang,
           }),
         });
       } catch (error) {
-        console.error("Failed to play saved translation", error);
+        console.error("TTS polling fetch failed", error);
       }
     };
 

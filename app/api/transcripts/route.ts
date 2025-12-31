@@ -21,7 +21,6 @@ export async function POST(req: Request) {
     utteranceId?: string;
     speakerUserId?: string;
     speakerName?: string;
-    sourceLang?: string;
     text?: string;
     ts?: number;
     meetingId?: string;

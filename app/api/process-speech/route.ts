@@ -57,7 +57,6 @@ export async function POST(req: Request) {
       room_name: meetingId ?? "unknown",
       sender: sender || userId,
       text,
-      source_lang: sourceLang,
     })
     .select("id")
     .single();

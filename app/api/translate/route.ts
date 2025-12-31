@@ -13,12 +13,14 @@ const cache = new Map<string, { value: string; ts: number }>();
 
 const persistTranslation = async ({
   userId,
+  meetingId,
   sourceLang,
   targetLang,
   originalText,
   translatedText,
 }: {
   userId: string;
+  meetingId?: string;
   sourceLang: string;
   targetLang: string;
   originalText: string;
@@ -29,6 +31,7 @@ const persistTranslation = async ({
     if (!supabase) return;
     await supabase.from("translations").insert({
       user_id: userId,
+      meeting_id: meetingId || "unknown",
       source_lang: sourceLang,
       target_lang: targetLang,
       original_text: originalText,
@@ -81,12 +84,14 @@ export async function POST(req: Request) {
     text?: string;
     sourceLang?: string;
     targetLang?: string;
+    meetingId?: string;
   };
   try {
     payload = (await req.json()) as {
       text?: string;
       sourceLang?: string;
       targetLang?: string;
+      meetingId?: string;
     };
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
@@ -236,6 +241,7 @@ export async function POST(req: Request) {
   if (ollamaResult) {
     void persistTranslation({
       userId,
+      meetingId: payload.meetingId,
       sourceLang,
       targetLang,
       originalText: text,
@@ -250,6 +256,7 @@ export async function POST(req: Request) {
   if (googleResult) {
     void persistTranslation({
       userId,
+      meetingId: payload.meetingId,
       sourceLang,
       targetLang,
       originalText: text,

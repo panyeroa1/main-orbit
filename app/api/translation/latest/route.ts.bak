@@ -25,7 +25,8 @@ export async function GET(req: Request) {
     .from("translations")
     .select(
       "id, translated_text, original_text, source_lang, target_lang, meeting_id, created_at"
-    );
+    )
+    .eq("user_id", userId);
 
   if (meetingId) {
     query = query.eq("meeting_id", meetingId);
