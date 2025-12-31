@@ -145,13 +145,6 @@ NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
 NEXT_PUBLIC_STREAM_API_KEY=xxxxxxxxxxxxxxxxxxxxxx
 STREAM_SECRET_KEY=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
-# live translator (Gemini)
-GEMINI_TRANSLATE_MODEL=gemini-flash-latest-lite
-
-# gemini live audio (tts)
-GEMINI_API_KEY=
-GEMINI_TTS_MODEL=models/gemini-2.5-flash-native-audio-preview-12-2025
-GEMINI_TTS_VOICE=Orus
 
 ```
 
@@ -201,15 +194,6 @@ GEMINI_TTS_VOICE=Orus
 
 - Save the changes to the `.env.local` file.
 
-### 10. Configure Live Translator (optional)
-
-- Set `GEMINI_API_KEY` (used for both translation and TTS).
-- Set `GEMINI_TRANSLATE_MODEL` to `gemini-flash-latest-lite` (or another Gemini model).
-
-### 11. Configure Gemini Live Audio (TTS) (optional)
-
-- Set `GEMINI_API_KEY` from your Google AI Studio project.
-- Optional: set `GEMINI_TTS_MODEL` and `GEMINI_TTS_VOICE`.
 
 12. Install Project Dependencies using `npm install --legacy-peer-deps` or `yarn install --legacy-peer-deps`.
 

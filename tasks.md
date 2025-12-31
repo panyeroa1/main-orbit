@@ -1,14 +1,18 @@
-Task ID: T-0010
-Title: Fix square styling for all meeting icons
-Status: DONE
+Task ID: T-0012
+Title: Configure Deepgram-Ollama-Cartesia Pipeline
+Status: IN-PROGRESS
 Owner: Miles
 
 Start log:
-- Timestamp: 2025-12-31 10:40
-- Plan: Update global CSS to target all control buttons including stats button for square styling.
+- Timestamp: 2025-12-31 11:00
+- Plan:
+  - Verify Deepgram STT implementation and request API key.
+  - Verify Ollama Cloud configuration (gpt-oss:120b-cloud).
+  - Verify Cartesia TTS configuration.
+  - Test the end-to-end flow.
 
 End log:
-- Timestamp: 2025-12-31 10:45
-- Changed: Added broader selectors to globals.css for border-radius override.
-- Tests: Verified build.
-- Status: DONE
+- Timestamp: (Pending)
+- Changed: (Pending)
+- Tests: (Pending)
+- Status: IN-PROGRESS

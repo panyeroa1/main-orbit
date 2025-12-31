@@ -48,7 +48,7 @@ export async function POST(req: Request) {
   }
 
   const text = payload.text?.trim() ?? "";
-  const voice = payload.voice?.trim() || process.env.GEMINI_TTS_VOICE?.trim();
+  const voice = payload.voice?.trim();
   const lang = payload.lang?.trim();
 
   if (!text) {

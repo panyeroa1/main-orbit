@@ -45,7 +45,7 @@ export const createDeepgramSTT = (
       processor = audioCtx.createScriptProcessor(4096, 1, 1);
 
       const language = options.lang && options.lang !== "auto" ? options.lang : "en";
-      const url = `wss://api.deepgram.com/v1/listen?model=nova-2&punctuate=true&language=${encodeURIComponent(
+      const url = `wss://api.deepgram.com/v1/listen?model=nova-3&smart_format=true&language=${encodeURIComponent(
         language
       )}&encoding=linear16&sample_rate=16000&apikey=${encodeURIComponent(apiKey)}`;
 
