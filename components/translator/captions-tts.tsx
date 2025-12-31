@@ -55,6 +55,8 @@ export const CaptionsTTS = ({ localUserId }: CaptionsTTSProps) => {
       });
 
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error("TTS request failed", response.status, errorText);
         throw new Error("TTS request failed.");
       }
 
@@ -110,7 +112,12 @@ export const CaptionsTTS = ({ localUserId }: CaptionsTTSProps) => {
         }
       };
 
-      await audio.play();
+      try {
+        await audio.play();
+      } catch (err) {
+        console.error("Audio playback failed", err);
+        throw err;
+      }
     } catch {
       playingRef.current = false;
       if (isolationCooldownRef.current) {
@@ -149,7 +156,7 @@ export const CaptionsTTS = ({ localUserId }: CaptionsTTSProps) => {
     }
 
     enabledAtRef.current = Date.now();
-  }, [ttsEnabled]);
+  }, [ttsEnabled, setIsTtsPlaying]);
 
   useEffect(() => {
     if (!ttsEnabled) return;

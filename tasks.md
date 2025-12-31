@@ -1,18 +1,18 @@
-Task ID: T-0008
-Title: Refine Translation UI and Logic
+Task ID: T-0009
+Title: TTS Volume Control and Robustness
 Status: DONE
 Owner: Miles
 
 Start log:
-- Timestamp: 2025-12-31 10:10
-- Plan: Implement square icons, lime green translation text, continuous captions, and fix TTS build/logic issues.
+- Timestamp: 2025-12-31 10:25
+- Plan: Add volume slider for TTS, improve error handling in TTS API and client, and fix IDE warnings.
 
 End log:
-- Timestamp: 2025-12-31 10:15
+- Timestamp: 2025-12-31 10:30
 - Changed:
-  - Forced square icons in globals.css.
-  - Updated captions overlay: 2 lines, continuous, lime green "Translation:" tag.
-  - Improved translation API prompt and removed same-language short-circuit.
-  - Fixed TTS variable conflict and added isTtsPlaying state.
-- Tests: Verified build and UI checks.
+  - Added volume control to translation settings and visual feedback.
+  - Updated TTS playback to respect volume settings.
+  - Added robust error handling and logging for TTS requests.
+  - Fixed useEffect dependencies and CSS vendor prefix ordering.
+- Tests: Verified build and resolving lint warnings.
 - Status: DONE

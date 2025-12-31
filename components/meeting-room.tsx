@@ -159,6 +159,7 @@ export const MeetingRoom = () => {
     setTargetLang,
     setTtsEnabled,
     setTtsVoice,
+    setTtsVolume,
   ]);
 
   useEffect(() => {

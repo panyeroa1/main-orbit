@@ -88,7 +88,6 @@ export async function POST(req: Request) {
       speed: 1,
       volume: 1,
     },
-    ...(lang ? { language: lang } : {}),
   };
 
   const controller = new AbortController();
@@ -128,6 +127,7 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "TTS failed";
+    console.error("Cartesia TTS error", message);
     return NextResponse.json({ error: message }, { status: 502 });
   } finally {
     clearTimeout(timeout);
