@@ -23,7 +23,7 @@ export const CaptionsTTS = ({ localUserId }: CaptionsTTSProps) => {
   const ttsVolume = useTranslatorStore((state) => state.ttsVolume);
   const setIsTtsPlaying = useTranslatorStore((state) => state.setIsTtsPlaying);
 
-  const spokenRef = useRef(new Set<string>());
+  const spokenRef = useRef(new Map<string, string>());
   const queueRef = useRef<QueueItem[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef<string | null>(null);
@@ -31,6 +31,7 @@ export const CaptionsTTS = ({ localUserId }: CaptionsTTSProps) => {
   const isolationCooldownRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
   );
+  const playWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const enabledAtRef = useRef<number | null>(null);
 
   const playNext = useCallback(async () => {
@@ -44,6 +45,17 @@ export const CaptionsTTS = ({ localUserId }: CaptionsTTSProps) => {
 
     try {
       setIsTtsPlaying(true);
+      if (playWatchdogRef.current) {
+        clearTimeout(playWatchdogRef.current);
+      }
+      playWatchdogRef.current = setTimeout(() => {
+        console.warn("TTS playback watchdog triggered — resetting");
+        playingRef.current = false;
+        setIsTtsPlaying(false);
+        if (useTranslatorStore.getState().ttsEnabled) {
+          void playNext();
+        }
+      }, 8000);
       const response = await fetch("/api/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -82,6 +94,10 @@ export const CaptionsTTS = ({ localUserId }: CaptionsTTSProps) => {
         if (isolationCooldownRef.current) {
           clearTimeout(isolationCooldownRef.current);
         }
+        if (playWatchdogRef.current) {
+          clearTimeout(playWatchdogRef.current);
+          playWatchdogRef.current = null;
+        }
         isolationCooldownRef.current = setTimeout(
           () => setIsTtsPlaying(false),
           200
@@ -100,6 +116,10 @@ export const CaptionsTTS = ({ localUserId }: CaptionsTTSProps) => {
         audioRef.current = null;
         if (isolationCooldownRef.current) {
           clearTimeout(isolationCooldownRef.current);
+        }
+        if (playWatchdogRef.current) {
+          clearTimeout(playWatchdogRef.current);
+          playWatchdogRef.current = null;
         }
         isolationCooldownRef.current = setTimeout(
           () => setIsTtsPlaying(false),
@@ -122,6 +142,10 @@ export const CaptionsTTS = ({ localUserId }: CaptionsTTSProps) => {
       playingRef.current = false;
       if (isolationCooldownRef.current) {
         clearTimeout(isolationCooldownRef.current);
+      }
+      if (playWatchdogRef.current) {
+        clearTimeout(playWatchdogRef.current);
+        playWatchdogRef.current = null;
       }
       isolationCooldownRef.current = setTimeout(
         () => setIsTtsPlaying(false),
@@ -164,10 +188,8 @@ export const CaptionsTTS = ({ localUserId }: CaptionsTTSProps) => {
     const enabledAt = enabledAtRef.current ?? 0;
 
     captionBuffer.forEach((caption) => {
-      if (!caption.isFinal) return;
       if (caption.ts < enabledAt) return;
       if (caption.speakerUserId === localUserId) return;
-      if (spokenRef.current.has(caption.utteranceId)) return;
 
       const translated = caption.translatedText?.trim();
       const text = translated || caption.text;
@@ -176,7 +198,10 @@ export const CaptionsTTS = ({ localUserId }: CaptionsTTSProps) => {
       const lang = translated ? targetLang : caption.sourceLang;
       const voice = ttsVoice.trim() || undefined;
 
-      spokenRef.current.add(caption.utteranceId);
+      const lastSpoken = spokenRef.current.get(caption.utteranceId) || "";
+      if (text === lastSpoken) return;
+
+      spokenRef.current.set(caption.utteranceId, text);
       queueRef.current.push({
         utteranceId: caption.utteranceId,
         text,

@@ -22,6 +22,10 @@ declare global {
       CARTESIA_API_KEY?: string;
       CARTESIA_TTS_MODEL_ID?: string;
       CARTESIA_TTS_VOICE_ID?: string;
+      NEXT_PUBLIC_DEEPGRAM_API_KEY?: string;
+      OLLAMA_API_KEY?: string;
+      OLLAMA_API_URL?: string;
+      OLLAMA_MODEL?: string;
     }
   }
 }

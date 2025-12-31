@@ -268,6 +268,8 @@ export const MeetingRoom = () => {
         if (!data.translatedText) return;
 
         updateCaptionTranslation(caption.utteranceId, data.translatedText);
+      } catch (error) {
+        console.error("translateCaption failed", error);
       } finally {
         inflightTranslationRef.current.delete(caption.utteranceId);
         const nextState = translationStateRef.current.get(caption.utteranceId);

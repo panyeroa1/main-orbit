@@ -1,7 +1,8 @@
 import type { Call } from "@stream-io/video-react-sdk";
 
-import type { TranscriptResult } from "../stt";
+import type { SpeechToTextProvider, TranscriptResult } from "../stt";
 import { createWebSpeechSTT } from "../stt/webspeech";
+import { createDeepgramSTT } from "../stt/deepgram";
 
 export type CaptionEventPayload = {
   type: "caption.partial" | "caption.final" | "caption.control";
@@ -123,24 +124,53 @@ export const createCaptionPublisher = (options: CaptionPublisherOptions) => {
     }
   };
 
-  const stt = createWebSpeechSTT({
-    onResult: handleResult,
-    onError: (error) => {
-      console.error("Caption publisher error:", error);
-    },
-    lang: sourceLang,
-  });
+  const hasDeepgramKey =
+    typeof process !== "undefined" &&
+    Boolean(process.env.NEXT_PUBLIC_DEEPGRAM_API_KEY);
+
+  const buildWebSpeech = () =>
+    createWebSpeechSTT({
+      onResult: handleResult,
+      onError: (error) => {
+        console.error("Caption publisher error (web speech):", error);
+      },
+      lang: sourceLang,
+    });
+
+  const buildDeepgram = () =>
+    createDeepgramSTT({
+      onResult: handleResult,
+      onError: (error) => {
+        console.error("Caption publisher error (deepgram):", error);
+        // Fallback to Web Speech if Deepgram fails mid-call.
+        try {
+          sttRef.current.stop();
+        } catch {
+          // ignore
+        }
+        sttRef.current = buildWebSpeech();
+        sttRef.current.start();
+      },
+      lang: sourceLang,
+    });
+
+  const sttRef: { current: SpeechToTextProvider } = {
+    current:
+      hasDeepgramKey && typeof window !== "undefined"
+        ? buildDeepgram()
+        : buildWebSpeech(),
+  };
 
   const start = () => {
     if (active) return;
     active = true;
-    stt.start();
+    sttRef.current.start();
   };
 
   const stop = () => {
     active = false;
     currentUtteranceId = null;
-    stt.stop();
+    sttRef.current.stop();
   };
 
   return { start, stop };

@@ -93,7 +93,8 @@ export async function POST(req: Request) {
         return null;
       }
       const data = (await response.json()) as [Array<[string]>];
-      const translatedText = data?.[0]?.map((entry) => entry[0]).join("") ?? "";
+      const translatedText =
+        data?.[0]?.map((entry) => entry[0]).join("") ?? "";
       if (!translatedText) return null;
       return translatedText;
     } catch (error) {
@@ -101,6 +102,98 @@ export async function POST(req: Request) {
       return null;
     }
   };
+
+  const tryOllama = async () => {
+    const apiKey = process.env.OLLAMA_API_KEY;
+    const apiUrl =
+      process.env.OLLAMA_API_URL ||
+      "https://ollama.com/api/chat";
+    const model = process.env.OLLAMA_MODEL || "gpt-oss-20b";
+    if (!apiKey) return null;
+
+    const sourceName =
+      TARGET_LANGUAGES.find((l) => l.value === sourceLang)?.label || sourceLang;
+    const targetName =
+      TARGET_LANGUAGES.find((l) => l.value === targetLang)?.label || targetLang;
+
+    const prompt = `Translate the text below from ${
+      sourceLang === "auto" ? "the detected language" : sourceName
+    } to ${targetName}. Return only the translation, nothing else.\n\nText:\n${text}`;
+
+    try {
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.2,
+          stream: true,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Translation API: Ollama error", {
+          status: response.status,
+          errorText,
+        });
+        return null;
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) return null;
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let output = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          try {
+            const json = JSON.parse(trimmed) as {
+              message?: { content?: string };
+              done?: boolean;
+            };
+            if (json.message?.content) {
+              output += json.message.content;
+            }
+            if (json.done) {
+              buffer = "";
+              break;
+            }
+          } catch {
+            // ignore malformed partials
+          }
+        }
+      }
+
+      if (!output.trim()) return null;
+      return output.trim();
+    } catch (error) {
+      console.error("Translation API: Ollama fetch failed", error);
+      return null;
+    }
+  };
+
+  const ollamaResult = await tryOllama();
+  if (ollamaResult) {
+    cache.set(cacheKey, { value: ollamaResult, ts: Date.now() });
+    pruneCache();
+    return NextResponse.json({ translatedText: ollamaResult });
+  }
 
   const googleResult = await tryGoogleFree();
   if (googleResult) {
@@ -119,7 +212,9 @@ export async function POST(req: Request) {
 
   const model =
     process.env.GEMINI_TRANSLATE_MODEL ?? "gemini-flash-lite-latest";
-  const primaryModel = model.startsWith("models/") ? model : `models/${model}`;
+  const primaryModel = model.startsWith("models/")
+    ? model
+    : `models/${model}`;
   const fallbackModel = "models/gemini-flash-latest-lite";
 
   const controller = new AbortController();
