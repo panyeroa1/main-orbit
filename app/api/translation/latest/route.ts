@@ -20,6 +20,7 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const meetingId = searchParams.get("meetingId") || undefined;
   const targetLang = searchParams.get("targetLang") || undefined;
+  const after = searchParams.get("after") || undefined;
 
   let query = supabase
     .from("translations")
@@ -33,10 +34,13 @@ export async function GET(req: Request) {
   if (targetLang) {
     query = query.eq("target_lang", targetLang);
   }
+  if (after) {
+    query = query.gt("created_at", after).order("created_at", { ascending: true });
+  } else {
+    query = query.order("created_at", { ascending: false }).limit(1);
+  }
 
-  const { data, error } = await query
-    .order("created_at", { ascending: false })
-    .limit(1);
+  const { data, error } = await query;
 
   if (error) {
     console.error("Latest translations fetch failed", error);

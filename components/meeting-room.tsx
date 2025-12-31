@@ -47,9 +47,12 @@ export const MeetingRoom = () => {
   const [layout, setLayout] = useState<CallLayoutType>("speaker-left");
   const [isTranslatorOpen, setIsTranslatorOpen] = useState(false);
   const [isTtsFeedEnabled, setIsTtsFeedEnabled] = useState(false);
+  const lastSeenTimestampRef = useRef<string | null>(null);
   const lastTranslationIdRef = useRef<string | null>(null);
   const params = useParams();
   const meetingId = (params as { id?: string })?.id;
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const playHeadRef = useRef<number>(0);
 
   const call = useCall();
   const { user, isLoaded } = useUser();
@@ -74,6 +77,85 @@ export const MeetingRoom = () => {
   const updateCaptionTranslation = useTranslatorStore(
     (state) => state.updateCaptionTranslation
   );
+
+  const enqueueAudioBuffer = async (text: string) => {
+    try {
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new AudioContext();
+      }
+      const ctx = audioCtxRef.current;
+      const res = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text,
+          lang: targetLang,
+        }),
+      });
+      if (!res.ok) return;
+
+      const arrayBuffer = await res.arrayBuffer();
+      const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+
+      const src = ctx.createBufferSource();
+      src.buffer = audioBuffer;
+      const gain = ctx.createGain();
+      gain.gain.value = ttsVolume ?? 0.75;
+      src.connect(gain).connect(ctx.destination);
+
+      const startAt = Math.max(ctx.currentTime, playHeadRef.current);
+      src.start(startAt);
+      playHeadRef.current = startAt + audioBuffer.duration;
+    } catch (error) {
+      console.error("enqueueAudioBuffer failed", error);
+    }
+  };
+
+  const enqueueStreamTts = async (text: string, sourceLang: string) => {
+    try {
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new AudioContext();
+      }
+      const ctx = audioCtxRef.current;
+      const res = await fetch("/api/process-speech", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text,
+          sourceLang,
+          targetLang,
+          meetingId,
+        }),
+      });
+      if (!res.ok || !res.body) return;
+
+      const reader = res.body.getReader();
+      const chunks: Uint8Array[] = [];
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) chunks.push(value);
+      }
+      const totalLength = chunks.reduce((acc, cur) => acc + cur.length, 0);
+      const buffer = new Uint8Array(totalLength);
+      let offset = 0;
+      for (const c of chunks) {
+        buffer.set(c, offset);
+        offset += c.length;
+      }
+      const audioBuffer = await ctx.decodeAudioData(buffer.buffer.slice(0));
+      const src = ctx.createBufferSource();
+      src.buffer = audioBuffer;
+      const gain = ctx.createGain();
+      gain.gain.value = ttsVolume ?? 0.75;
+      src.connect(gain).connect(ctx.destination);
+      const startAt = Math.max(ctx.currentTime, playHeadRef.current);
+      src.start(startAt);
+      playHeadRef.current = startAt + audioBuffer.duration;
+    } catch (error) {
+      console.error("enqueueStreamTts failed", error);
+    }
+  };
 
   const publisherRef = useRef<ReturnType<typeof createCaptionPublisher> | null>(
     null
@@ -279,27 +361,9 @@ export const MeetingRoom = () => {
           body: JSON.stringify({ ...caption, meetingId }),
         });
 
-        // 2. Translate and persist translation
+        // 2. Stream translate + TTS
         try {
-          const response = await fetch("/api/translate", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              text: caption.text,
-              sourceLang: caption.sourceLang,
-              targetLang,
-              meetingId,
-            }),
-          });
-          if (response.ok) {
-            const data = (await response.json()) as { translatedText?: string };
-            if (data.translatedText) {
-              updateCaptionTranslation(
-                caption.utteranceId,
-                data.translatedText
-              );
-            }
-          }
+          void enqueueStreamTts(caption.text, caption.sourceLang);
         } catch (error) {
           console.error("Broadcaster translation/persistence failed", error);
         }
@@ -336,31 +400,32 @@ export const MeetingRoom = () => {
     if (!isTtsFeedEnabled || !meetingId) return;
     const poll = async () => {
       try {
-        const res = await fetch(
-          `/api/translation/latest?meetingId=${encodeURIComponent(
-            meetingId
-          )}&targetLang=${encodeURIComponent(targetLang)}`
-        );
+        const url = `/api/translation/latest?meetingId=${encodeURIComponent(
+          meetingId
+        )}&targetLang=${encodeURIComponent(targetLang)}${
+          lastSeenTimestampRef.current
+            ? `&after=${encodeURIComponent(lastSeenTimestampRef.current)}`
+            : ""
+        }`;
+
+        const res = await fetch(url);
         if (!res.ok) return;
         const data = (await res.json()) as {
           translations?: Array<{
             id: string;
             translated_text?: string;
+            created_at: string;
           }>;
         };
-        const latest = data.translations?.[0];
-        if (!latest || !latest.translated_text) return;
-        if (latest.id === lastTranslationIdRef.current) return;
-        lastTranslationIdRef.current = latest.id;
+        const items = data.translations ?? [];
+        if (items.length === 0) return;
 
-        await fetch("/api/tts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            text: latest.translated_text,
-            lang: targetLang,
-          }),
-        });
+        for (const item of items) {
+          if (item.translated_text) {
+            void enqueueAudioBuffer(item.translated_text);
+          }
+          lastSeenTimestampRef.current = item.created_at;
+        }
       } catch (error) {
         console.error("TTS polling fetch failed", error);
       }
@@ -370,7 +435,7 @@ export const MeetingRoom = () => {
       void poll();
     }, 4000);
     return () => clearInterval(interval);
-  }, [isTtsFeedEnabled, meetingId, targetLang]);
+  }, [isTtsFeedEnabled, meetingId, targetLang, ttsVolume]);
 
   if (callingState !== CallingState.JOINED) return <Loader />;
 
