@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { TARGET_LANGUAGES } from "@/constants/languages";
+import { getSupabaseServerClient } from "@/lib/supabase/server";
 
 const MAX_TEXT_LENGTH = 1000;
 const RATE_LIMIT_WINDOW_MS = 60_000;
@@ -9,6 +10,34 @@ const CACHE_MAX_ENTRIES = 200;
 
 const rateLimit = new Map<string, { count: number; windowStart: number }>();
 const cache = new Map<string, { value: string; ts: number }>();
+
+const persistTranslation = async ({
+  userId,
+  sourceLang,
+  targetLang,
+  originalText,
+  translatedText,
+}: {
+  userId: string;
+  sourceLang: string;
+  targetLang: string;
+  originalText: string;
+  translatedText: string;
+}) => {
+  try {
+    const supabase = getSupabaseServerClient();
+    if (!supabase) return;
+    await supabase.from("translations").insert({
+      user_id: userId,
+      source_lang: sourceLang,
+      target_lang: targetLang,
+      original_text: originalText,
+      translated_text: translatedText,
+    });
+  } catch (error) {
+    console.error("Translation API: failed to persist translation", error);
+  }
+};
 
 const pruneCache = () => {
   if (cache.size <= CACHE_MAX_ENTRIES) return;
@@ -106,9 +135,9 @@ export async function POST(req: Request) {
   const tryOllama = async () => {
     const apiKey = process.env.OLLAMA_API_KEY;
     const apiUrl =
-      process.env.OLLAMA_API_URL ||
-      "https://ollama.com/api/chat";
-    const model = process.env.OLLAMA_MODEL || "gpt-oss-20b";
+      process.env.OLLAMA_API_URL || "https://ollama.com/api/chat";
+    const model = process.env.OLLAMA_MODEL || "gpt-oss:120b-cloud";
+    const fallbackModel = "gpt-oss:120b-cloud";
     if (!apiKey) return null;
 
     const sourceName =
@@ -120,76 +149,94 @@ export async function POST(req: Request) {
       sourceLang === "auto" ? "the detected language" : sourceName
     } to ${targetName}. Return only the translation, nothing else.\n\nText:\n${text}`;
 
-    try {
-      const response = await fetch(apiUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model,
-          messages: [{ role: "user", content: prompt }],
-          temperature: 0.2,
-          stream: true,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Translation API: Ollama error", {
-          status: response.status,
-          errorText,
+    const runOnce = async (modelName: string) => {
+      try {
+        const response = await fetch(apiUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: modelName,
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.2,
+            stream: true,
+          }),
         });
-        return null;
-      }
 
-      const reader = response.body?.getReader();
-      if (!reader) return null;
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("Translation API: Ollama error", {
+            status: response.status,
+            errorText,
+            model: modelName,
+          });
+          return { ok: false as const, status: response.status };
+        }
 
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let output = "";
+        const reader = response.body?.getReader();
+        if (!reader) return { ok: false as const, status: 0 };
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let output = "";
 
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
 
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed) continue;
-          try {
-            const json = JSON.parse(trimmed) as {
-              message?: { content?: string };
-              done?: boolean;
-            };
-            if (json.message?.content) {
-              output += json.message.content;
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            try {
+              const json = JSON.parse(trimmed) as {
+                message?: { content?: string };
+                done?: boolean;
+              };
+              if (json.message?.content) {
+                output += json.message.content;
+              }
+              if (json.done) {
+                buffer = "";
+                break;
+              }
+            } catch {
+              // ignore malformed partials
             }
-            if (json.done) {
-              buffer = "";
-              break;
-            }
-          } catch {
-            // ignore malformed partials
           }
         }
-      }
 
-      if (!output.trim()) return null;
-      return output.trim();
-    } catch (error) {
-      console.error("Translation API: Ollama fetch failed", error);
-      return null;
+        if (!output.trim()) return { ok: false as const, status: 200 };
+        return { ok: true as const, text: output.trim() };
+      } catch (error) {
+        console.error("Translation API: Ollama fetch failed", error);
+        return { ok: false as const, status: 0 };
+      }
+    };
+
+    const first = await runOnce(model);
+    if (first.ok) return first.text;
+    if (first.status === 404 && model !== fallbackModel) {
+      const retry = await runOnce(fallbackModel);
+      if (retry.ok) return retry.text;
     }
+    return null;
   };
 
   const ollamaResult = await tryOllama();
   if (ollamaResult) {
+    void persistTranslation({
+      userId,
+      sourceLang,
+      targetLang,
+      originalText: text,
+      translatedText: ollamaResult,
+    });
     cache.set(cacheKey, { value: ollamaResult, ts: Date.now() });
     pruneCache();
     return NextResponse.json({ translatedText: ollamaResult });
@@ -197,6 +244,13 @@ export async function POST(req: Request) {
 
   const googleResult = await tryGoogleFree();
   if (googleResult) {
+    void persistTranslation({
+      userId,
+      sourceLang,
+      targetLang,
+      originalText: text,
+      translatedText: googleResult,
+    });
     cache.set(cacheKey, { value: googleResult, ts: Date.now() });
     pruneCache();
     return NextResponse.json({ translatedText: googleResult });
@@ -287,22 +341,29 @@ export async function POST(req: Request) {
 
     const data = result.data;
 
-    const translatedText =
-      data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
+  const translatedText =
+    data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
 
-    console.log("Translation API: Result", { translatedText });
+  console.log("Translation API: Result", { translatedText });
 
-    if (!translatedText) {
-      return NextResponse.json(
-        { error: "Translation unavailable" },
-        { status: 502 }
-      );
-    }
+  if (!translatedText) {
+    return NextResponse.json(
+      { error: "Translation unavailable" },
+      { status: 502 }
+    );
+  }
 
-    cache.set(cacheKey, { value: translatedText, ts: Date.now() });
-    pruneCache();
+  void persistTranslation({
+    userId,
+    sourceLang,
+    targetLang,
+    originalText: text,
+    translatedText,
+  });
+  cache.set(cacheKey, { value: translatedText, ts: Date.now() });
+  pruneCache();
 
-    return NextResponse.json({ translatedText });
+  return NextResponse.json({ translatedText });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Translation failed";

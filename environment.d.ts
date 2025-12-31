@@ -26,6 +26,8 @@ declare global {
       OLLAMA_API_KEY?: string;
       OLLAMA_API_URL?: string;
       OLLAMA_MODEL?: string;
+      SUPABASE_URL?: string;
+      SUPABASE_KEY?: string;
     }
   }
 }

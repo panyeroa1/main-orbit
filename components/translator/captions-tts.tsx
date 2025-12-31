@@ -192,10 +192,11 @@ export const CaptionsTTS = ({ localUserId }: CaptionsTTSProps) => {
       if (caption.speakerUserId === localUserId) return;
 
       const translated = caption.translatedText?.trim();
-      const text = translated || caption.text;
-      if (!text) return;
+      // Only speak translated text; skip if translation isn't available yet.
+      if (!translated) return;
 
-      const lang = translated ? targetLang : caption.sourceLang;
+      const text = translated;
+      const lang = targetLang;
       const voice = ttsVoice.trim() || undefined;
 
       const lastSpoken = spokenRef.current.get(caption.utteranceId) || "";
