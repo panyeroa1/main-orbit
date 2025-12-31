@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { TARGET_LANGUAGES } from "@/constants/languages";
 
 const MAX_TEXT_LENGTH = 1000;
 const RATE_LIMIT_WINDOW_MS = 60_000;
@@ -63,16 +64,16 @@ export async function POST(req: Request) {
   const targetLang = payload.targetLang?.trim() ?? "";
 
   if (!text || !targetLang) {
+    console.log("Translation API: Invalid input", { text, targetLang });
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
+
+  console.log("Translation API: Request", { sourceLang, targetLang, textLength: text.length });
 
   if (text.length > MAX_TEXT_LENGTH) {
     return NextResponse.json({ error: "Text too long" }, { status: 413 });
   }
 
-  if (sourceLang === targetLang) {
-    return NextResponse.json({ translatedText: text });
-  }
 
   const cacheKey = `${sourceLang}:${targetLang}:${text}`;
   const cached = cache.get(cacheKey);
@@ -95,9 +96,22 @@ export async function POST(req: Request) {
   const timeout = setTimeout(() => controller.abort(), 8000);
 
   try {
-    const prompt = `Translate the following text from ${
-      sourceLang === "auto" ? "its detected language" : sourceLang
-    } to ${targetLang}. Return only the translated text.\n\n${text}`;
+    const sourceName = TARGET_LANGUAGES.find(l => l.value === sourceLang)?.label || sourceLang;
+    const targetName = TARGET_LANGUAGES.find(l => l.value === targetLang)?.label || targetLang;
+
+    const prompt = `You are a professional real-time translator. Translate the following text from ${
+      sourceLang === "auto" ? "the automatically detected language" : sourceName
+    } to ${targetName}. 
+    
+    IMPORTANT:
+    - Return ONLY the translated text.
+    - Do not include any explanations or punctuation outside what is necessary for the translation.
+    - If the source and target are the same basic language but different dialects, adapt the text to the target dialect.
+    
+    Text to translate:
+    ${text}`;
+    
+    console.log("Translation API: Prompt created", { sourceName, targetName });
 
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/${modelPath}:generateContent?key=${geminiApiKey}`,
@@ -127,6 +141,8 @@ export async function POST(req: Request) {
 
     const translatedText =
       data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
+
+    console.log("Translation API: Result", { translatedText });
 
     if (!translatedText) {
       return NextResponse.json(

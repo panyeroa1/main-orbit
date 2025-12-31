@@ -99,7 +99,7 @@ export const MeetingTypeList = () => {
         title="New Meeting"
         description="Start an instant meeting"
         handleClick={() => setMeetingState("isInstantMeeting")}
-        className="bg-orange-1"
+        className="border border-white/10 bg-gradient-to-br from-[#0B0D10] via-[#15181D] to-[#0B0D10] hover:border-white/20"
       />
 
       <HomeCard
@@ -107,7 +107,7 @@ export const MeetingTypeList = () => {
         title="Schedule Meeting"
         description="Plan your meeting"
         handleClick={() => setMeetingState("isScheduleMeeting")}
-        className="bg-blue-1"
+        className="border border-white/10 bg-gradient-to-br from-[#0B0D10] via-[#171B22] to-[#0B0D10] hover:border-white/20"
       />
 
       <HomeCard
@@ -115,7 +115,7 @@ export const MeetingTypeList = () => {
         title="View Recordings"
         description="Check out your recordings"
         handleClick={() => router.push("/recordings")}
-        className="bg-purple-1"
+        className="border border-white/10 bg-gradient-to-br from-[#0B0D10] via-[#141820] to-[#0B0D10] hover:border-white/20"
       />
 
       <HomeCard
@@ -123,7 +123,7 @@ export const MeetingTypeList = () => {
         title="Join Meeting"
         description="Via invitation link"
         handleClick={() => setMeetingState("isJoiningMeeting")}
-        className="bg-yellow-1"
+        className="border border-white/10 bg-gradient-to-br from-[#0B0D10] via-[#151A22] to-[#0B0D10] hover:border-white/20"
       />
 
       {!callDetails ? (

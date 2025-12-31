@@ -86,6 +86,18 @@ export const MeetingRoom = () => {
     >()
   );
   const inflightTranslationRef = useRef(new Set<string>());
+  const translationStateRef = useRef(
+    new Map<
+      string,
+      {
+        lastText: string;
+        lastAt: number;
+        inflight: boolean;
+        pendingText?: string;
+        pendingIsFinal?: boolean;
+      }
+    >()
+  );
   const prefsLoadedRef = useRef(false);
 
   const isPersonalRoom = !!searchParams.get("personal");
@@ -184,6 +196,102 @@ export const MeetingRoom = () => {
   useEffect(() => {
     if (!call) return;
 
+    const translatePartialThrottleMs = 600;
+
+    const translateCaption = async (caption: {
+      utteranceId: string;
+      text: string;
+      sourceLang: string;
+      isFinal: boolean;
+    }) => {
+      const { autoTranslateEnabled: autoTranslate, targetLang: target } =
+        useTranslatorStore.getState();
+      if (!autoTranslate || !target || target === caption.sourceLang) return;
+
+      const state =
+        translationStateRef.current.get(caption.utteranceId) ?? {
+          lastText: "",
+          lastAt: 0,
+          inflight: false,
+        };
+
+      if (!caption.text || caption.text === state.lastText) {
+        if (caption.isFinal) {
+          translationStateRef.current.delete(caption.utteranceId);
+        }
+        return;
+      }
+
+      const now = Date.now();
+      if (!caption.isFinal && now - state.lastAt < translatePartialThrottleMs) {
+        state.pendingText = caption.text;
+        state.pendingIsFinal = caption.isFinal;
+        translationStateRef.current.set(caption.utteranceId, state);
+        return;
+      }
+
+      if (state.inflight) {
+        state.pendingText = caption.text;
+        state.pendingIsFinal = caption.isFinal;
+        translationStateRef.current.set(caption.utteranceId, state);
+        return;
+      }
+
+      state.inflight = true;
+      state.lastAt = now;
+      state.lastText = caption.text;
+      translationStateRef.current.set(caption.utteranceId, state);
+
+      inflightTranslationRef.current.add(caption.utteranceId);
+
+      try {
+        const response = await fetch("/api/translate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: caption.text,
+            sourceLang: caption.sourceLang,
+            targetLang: target,
+          }),
+        });
+
+        if (!response.ok) return;
+
+        const data = (await response.json()) as { translatedText?: string };
+        if (!data.translatedText) return;
+
+        updateCaptionTranslation(caption.utteranceId, data.translatedText);
+      } finally {
+        inflightTranslationRef.current.delete(caption.utteranceId);
+        const nextState = translationStateRef.current.get(caption.utteranceId);
+        if (!nextState) return;
+
+        nextState.inflight = false;
+        translationStateRef.current.set(caption.utteranceId, nextState);
+
+        if (
+          nextState.pendingText &&
+          nextState.pendingText !== nextState.lastText
+        ) {
+          const pendingText = nextState.pendingText;
+          const pendingIsFinal = Boolean(nextState.pendingIsFinal);
+          nextState.pendingText = undefined;
+          nextState.pendingIsFinal = undefined;
+          translationStateRef.current.set(caption.utteranceId, nextState);
+          await translateCaption({
+            ...caption,
+            text: pendingText,
+            isFinal: pendingIsFinal,
+          });
+          return;
+        }
+
+        if (caption.isFinal) {
+          translationStateRef.current.delete(caption.utteranceId);
+        }
+      }
+    };
+
     const handleCaptionPayload = async (payload: {
       type?: string;
       v?: number;
@@ -249,35 +357,7 @@ export const MeetingRoom = () => {
 
       upsertCaption(caption);
 
-      if (!caption.isFinal) return;
-
-      const { autoTranslateEnabled: autoTranslate, targetLang: target } =
-        useTranslatorStore.getState();
-      if (!autoTranslate || !target || target === caption.sourceLang) return;
-      if (inflightTranslationRef.current.has(caption.utteranceId)) return;
-
-      inflightTranslationRef.current.add(caption.utteranceId);
-
-      try {
-        const response = await fetch("/api/translate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            text: caption.text,
-            sourceLang: caption.sourceLang,
-            targetLang: target,
-          }),
-        });
-
-        if (!response.ok) return;
-
-        const data = (await response.json()) as { translatedText?: string };
-        if (!data.translatedText) return;
-
-        updateCaptionTranslation(caption.utteranceId, data.translatedText);
-      } finally {
-        inflightTranslationRef.current.delete(caption.utteranceId);
-      }
+      await translateCaption(caption);
     };
 
     const handleCustomEvent = (event: {
