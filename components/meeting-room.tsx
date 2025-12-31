@@ -12,7 +12,7 @@ import {
 } from "@stream-io/video-react-sdk";
 import { Languages, LayoutList, Users } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
@@ -26,6 +26,7 @@ import { CaptionsTTS } from "@/components/translator/captions-tts";
 import { CaptionsOverlay } from "@/components/translator/captions-overlay";
 import { TranslatorModal } from "@/components/translator/translator-modal";
 import { createCaptionPublisher } from "@/lib/translator/captions/publisher";
+import { TARGET_LANGUAGES } from "@/constants/languages";
 import { cn } from "@/lib/utils";
 import { useTranslatorStore } from "@/store/use-translator";
 import { Volume2 } from "lucide-react";
@@ -47,6 +48,8 @@ export const MeetingRoom = () => {
   const [isTranslatorOpen, setIsTranslatorOpen] = useState(false);
   const [isTtsFeedEnabled, setIsTtsFeedEnabled] = useState(false);
   const lastTranslationIdRef = useRef<string | null>(null);
+  const params = useParams();
+  const meetingId = (params as { id?: string })?.id;
 
   const call = useCall();
   const { user, isLoaded } = useUser();
@@ -56,44 +59,13 @@ export const MeetingRoom = () => {
   const localParticipant = useLocalParticipant();
 
   const captionsEnabled = useTranslatorStore((state) => state.enabled);
-  const autoTranslateEnabled = useTranslatorStore(
-    (state) => state.autoTranslateEnabled
-  );
   const targetLang = useTranslatorStore((state) => state.targetLang);
   const speakerLang = useTranslatorStore((state) => state.speakerLang);
   const ttsVolume = useTranslatorStore((state) => state.ttsVolume);
   const setEnabled = useTranslatorStore((state) => state.setEnabled);
-  const setAutoTranslateEnabled = useTranslatorStore(
-    (state) => state.setAutoTranslateEnabled
-  );
   const setTargetLang = useTranslatorStore((state) => state.setTargetLang);
   const setShowOriginal = useTranslatorStore((state) => state.setShowOriginal);
 
-  const playLatestSavedTranslation = useCallback(async () => {
-    try {
-      const res = await fetch("/api/translation/latest");
-      if (!res.ok) return;
-      const data = (await res.json()) as {
-        translations?: Array<{ id: string; translated_text?: string }>;
-      };
-      const latest = data.translations?.[0];
-      if (!latest || !latest.translated_text) return;
-      if (latest.id === lastTranslationIdRef.current) return;
-
-      lastTranslationIdRef.current = latest.id;
-
-      await fetch("/api/tts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: latest.translated_text,
-          lang: targetLang,
-        }),
-      });
-    } catch (error) {
-      console.error("Failed to play saved translation", error);
-    }
-  }, [targetLang]);
   const setSpeakerLang = useTranslatorStore((state) => state.setSpeakerLang);
   const setTtsEnabled = useTranslatorStore((state) => state.setTtsEnabled);
   const setTtsVoice = useTranslatorStore((state) => state.setTtsVoice);
@@ -116,23 +88,10 @@ export const MeetingRoom = () => {
       }
     >()
   );
-  const inflightTranslationRef = useRef(new Set<string>());
-  const translationStateRef = useRef(
-    new Map<
-      string,
-      {
-        lastText: string;
-        lastAt: number;
-        inflight: boolean;
-        pendingText?: string;
-        pendingIsFinal?: boolean;
-      }
-    >()
-  );
   const prefsLoadedRef = useRef(false);
 
   const isPersonalRoom = !!searchParams.get("personal");
-  const translatorIndicatorEnabled = captionsEnabled || autoTranslateEnabled;
+  const translatorIndicatorEnabled = captionsEnabled;
 
   const CallLayout = () => {
     switch (layout) {
@@ -154,9 +113,6 @@ export const MeetingRoom = () => {
       const data = prefs as Record<string, unknown>;
 
       if (typeof data.enabled === "boolean") setEnabled(data.enabled);
-      if (typeof data.autoTranslateEnabled === "boolean") {
-        setAutoTranslateEnabled(data.autoTranslateEnabled);
-      }
       if (typeof data.targetLang === "string" && data.targetLang) {
         setTargetLang(data.targetLang);
       }
@@ -181,7 +137,6 @@ export const MeetingRoom = () => {
   }, [
     isLoaded,
     user,
-    setAutoTranslateEnabled,
     setEnabled,
     setShowOriginal,
     setSpeakerLang,
@@ -231,101 +186,22 @@ export const MeetingRoom = () => {
   useEffect(() => {
     if (!call) return;
 
-    const translatePartialThrottleMs = 300;
-
-    const translateCaption = async (caption: {
+    const persistTranscript = async (caption: {
       utteranceId: string;
-      text: string;
+      speakerUserId: string;
+      speakerName?: string;
       sourceLang: string;
-      isFinal: boolean;
+      text: string;
+      ts: number;
     }) => {
-      const { autoTranslateEnabled: autoTranslate, targetLang: target } =
-        useTranslatorStore.getState();
-      if (!autoTranslate || !target || target === caption.sourceLang) return;
-
-      const state =
-        translationStateRef.current.get(caption.utteranceId) ?? {
-          lastText: "",
-          lastAt: 0,
-          inflight: false,
-        };
-
-      if (!caption.text || caption.text === state.lastText) {
-        if (caption.isFinal) {
-          translationStateRef.current.delete(caption.utteranceId);
-        }
-        return;
-      }
-
-      const now = Date.now();
-      if (!caption.isFinal && now - state.lastAt < translatePartialThrottleMs) {
-        state.pendingText = caption.text;
-        state.pendingIsFinal = caption.isFinal;
-        translationStateRef.current.set(caption.utteranceId, state);
-        return;
-      }
-
-      if (state.inflight) {
-        state.pendingText = caption.text;
-        state.pendingIsFinal = caption.isFinal;
-        translationStateRef.current.set(caption.utteranceId, state);
-        return;
-      }
-
-      state.inflight = true;
-      state.lastAt = now;
-      state.lastText = caption.text;
-      translationStateRef.current.set(caption.utteranceId, state);
-
-      inflightTranslationRef.current.add(caption.utteranceId);
-
       try {
-        const response = await fetch("/api/translate", {
+        await fetch("/api/transcripts", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            text: caption.text,
-            sourceLang: caption.sourceLang,
-            targetLang: target,
-          }),
+          body: JSON.stringify(caption),
         });
-
-        if (!response.ok) return;
-
-        const data = (await response.json()) as { translatedText?: string };
-        if (!data.translatedText) return;
-
-        updateCaptionTranslation(caption.utteranceId, data.translatedText);
       } catch (error) {
-        console.error("translateCaption failed", error);
-      } finally {
-        inflightTranslationRef.current.delete(caption.utteranceId);
-        const nextState = translationStateRef.current.get(caption.utteranceId);
-        if (!nextState) return;
-
-        nextState.inflight = false;
-        translationStateRef.current.set(caption.utteranceId, nextState);
-
-        if (
-          nextState.pendingText &&
-          nextState.pendingText !== nextState.lastText
-        ) {
-          const pendingText = nextState.pendingText;
-          const pendingIsFinal = Boolean(nextState.pendingIsFinal);
-          nextState.pendingText = undefined;
-          nextState.pendingIsFinal = undefined;
-          translationStateRef.current.set(caption.utteranceId, nextState);
-          await translateCaption({
-            ...caption,
-            text: pendingText,
-            isFinal: pendingIsFinal,
-          });
-          return;
-        }
-
-        if (caption.isFinal) {
-          translationStateRef.current.delete(caption.utteranceId);
-        }
+        console.error("persistTranscript failed", error);
       }
     };
 
@@ -395,7 +271,30 @@ export const MeetingRoom = () => {
 
       upsertCaption(caption);
 
-      await translateCaption(caption);
+      if (caption.isFinal && meetingId) {
+        try {
+          const response = await fetch("/api/translate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              text: caption.text,
+              sourceLang: caption.sourceLang,
+              targetLang,
+            }),
+          });
+          if (response.ok) {
+            const data = (await response.json()) as { translatedText?: string };
+            if (data.translatedText) {
+              updateCaptionTranslation(
+                caption.utteranceId,
+                data.translatedText
+              );
+            }
+          }
+        } catch (error) {
+          console.error("translate+persist failed", error);
+        }
+      }
     };
 
     const handleCustomEvent = (event: {
@@ -421,26 +320,62 @@ export const MeetingRoom = () => {
     updateCaptionTranslation,
     upsertCaption,
     targetLang,
+    meetingId,
   ]);
 
   useEffect(() => {
-    if (!isTtsFeedEnabled) return;
+    if (!isTtsFeedEnabled || !meetingId) return;
     const poll = async () => {
       try {
-        const res = await fetch("/api/translation/latest");
+        const res = await fetch(
+          `/api/transcriptions/latest?meetingId=${encodeURIComponent(
+            meetingId
+          )}`
+        );
         if (!res.ok) return;
         const data = (await res.json()) as {
-          translations?: Array<{ id: string; translated_text?: string }>;
+          transcriptions?: Array<{
+            id: string;
+            text?: string;
+            source_lang?: string;
+          }>;
         };
-        const latest = data.translations?.[0];
-        if (!latest || !latest.translated_text) return;
+        const latest = data.transcriptions?.[0];
+        if (!latest) return;
         if (latest.id === lastTranslationIdRef.current) return;
         lastTranslationIdRef.current = latest.id;
+
+        if (!latest.text) return;
+
+        let textToSpeak = latest.text;
+
+        if (targetLang && latest.source_lang && targetLang !== latest.source_lang) {
+          try {
+            const translateRes = await fetch("/api/translate", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                text: latest.text,
+                sourceLang: latest.source_lang ?? "auto",
+                targetLang,
+              }),
+            });
+            if (translateRes.ok) {
+              const body = (await translateRes.json()) as {
+                translatedText?: string;
+              };
+              textToSpeak = body.translatedText || textToSpeak;
+            }
+          } catch (error) {
+            console.error("Translation for TTS failed", error);
+          }
+        }
+
         await fetch("/api/tts", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            text: latest.translated_text,
+            text: textToSpeak,
             lang: targetLang,
           }),
         });
@@ -453,7 +388,7 @@ export const MeetingRoom = () => {
       void poll();
     }, 4000);
     return () => clearInterval(interval);
-  }, [isTtsFeedEnabled, targetLang]);
+  }, [isTtsFeedEnabled, meetingId, targetLang]);
 
   if (callingState !== CallingState.JOINED) return <Loader />;
 
@@ -461,9 +396,7 @@ export const MeetingRoom = () => {
     <div className="relative min-h-screen w-full overflow-hidden text-white">
       {translatorIndicatorEnabled && (
         <div className="absolute left-4 top-4 z-40 rounded-full bg-black/60 px-3 py-1 text-xs font-semibold text-white/90 backdrop-blur-sm">
-          {autoTranslateEnabled
-            ? `CC • ${targetLang.toUpperCase()}`
-            : "Captions On"}
+          {`Captions • ${targetLang.toUpperCase()}`}
         </div>
       )}
 
@@ -535,6 +468,27 @@ export const MeetingRoom = () => {
             )}
           </div>
         </button>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            className={cn(controlButtonClasses, "cursor-pointer")}
+            title="Translation language"
+          >
+            <Volume2 size={20} className="text-white" />
+            <span className="ml-1 text-xs font-semibold">Lang</span>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent className="border-white/10 bg-black/90 text-white max-h-64 overflow-y-auto">
+            {TARGET_LANGUAGES.map((option) => (
+              <DropdownMenuItem
+                key={option.value}
+                className="cursor-pointer"
+                onClick={() => setTargetLang(option.value)}
+              >
+                {option.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         <button
           onClick={() => setIsTtsFeedEnabled((prev) => !prev)}

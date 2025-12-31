@@ -77,7 +77,11 @@ export async function POST(req: Request) {
     );
   }
 
-  let payload: { text?: string; sourceLang?: string; targetLang?: string };
+  let payload: {
+    text?: string;
+    sourceLang?: string;
+    targetLang?: string;
+  };
   try {
     payload = (await req.json()) as {
       text?: string;

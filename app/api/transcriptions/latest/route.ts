@@ -19,30 +19,22 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const meetingId = searchParams.get("meetingId") || undefined;
-  const targetLang = searchParams.get("targetLang") || undefined;
 
-  let query = supabase
-    .from("translations")
-    .select(
-      "id, translated_text, original_text, source_lang, target_lang, meeting_id, created_at"
-    )
-    .eq("user_id", userId);
-
-  if (meetingId) {
-    query = query.eq("meeting_id", meetingId);
-  }
-  if (targetLang) {
-    query = query.eq("target_lang", targetLang);
+  if (!meetingId) {
+    return NextResponse.json({ error: "meetingId required" }, { status: 400 });
   }
 
-  const { data, error } = await query
+  const { data, error } = await supabase
+    .from("transcriptions")
+    .select("id, text, source_lang, created_at")
+    .eq("room_name", meetingId)
     .order("created_at", { ascending: false })
     .limit(1);
 
   if (error) {
-    console.error("Latest translations fetch failed", error);
+    console.error("Latest transcription fetch failed", error);
     return NextResponse.json({ error: "Fetch failed" }, { status: 500 });
   }
 
-  return NextResponse.json({ translations: data ?? [] });
+  return NextResponse.json({ transcriptions: data ?? [] });
 }

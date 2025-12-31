@@ -98,7 +98,7 @@ export const MeetingTypeList = () => {
         img="/icons/add-meeting.svg"
         title="New Meeting"
         description="Start an instant meeting"
-        handleClick={() => setMeetingState("isInstantMeeting")}
+        handleClick={createMeeting}
         className="border border-white/10 bg-gradient-to-br from-[#0B0D10] via-[#15181D] to-[#0B0D10] hover:border-white/20"
       />
 
@@ -188,13 +188,13 @@ export const MeetingTypeList = () => {
       )}
 
       <MeetingModal
-        isOpen={meetingState === "isInstantMeeting"}
-        onClose={() => setMeetingState(undefined)}
-        title="Start an instant meeting"
-        className="text-center"
-        buttonText="Start Meeting"
-        handleClick={createMeeting}
-        isLoading={isLoading}
+        isOpen={false}
+        onClose={() => {}}
+        title=""
+        className="hidden"
+        buttonText=""
+        handleClick={() => {}}
+        isLoading={false}
       />
 
       <MeetingModal
