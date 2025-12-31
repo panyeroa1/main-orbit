@@ -1,17 +1,17 @@
-Task ID: T-0016
-Title: Commit User Changes (Transcription APIs)
+Task ID: T-0017
+Title: Fix Runtime Error and Clean Build Cache
 Status: DONE
 Owner: Miles
 
 Start log:
-- Timestamp: 2025-12-31 12:10
-- Plan: Commit user-created API routes and meeting room logic.
+- Timestamp: 2025-12-31 12:30
+- Plan: Resolve runtime TypeError and remove unused imports.
 
 End log:
-- Timestamp: 2025-12-31 12:15
+- Timestamp: 2025-12-31 12:35
 - Changed:
-  - Added `app/api/transcriptions/` and `app/api/transcripts/`.
-  - Updated `components/meeting-room.tsx` with new logic.
-  - Pushed to `main-orbit`.
-- Tests: N/A (User manual edits).
+  - Removed unused `useCallback` import from `meeting-room.tsx`.
+  - Cleaned `.next` build cache to resolve runtime error.
+  - Committed and pushed to `main-orbit`.
+- Tests: Dev server running successfully on port 3001.
 - Status: DONE

@@ -10,8 +10,13 @@ export const createDeepgramSTT = (
   let processor: ScriptProcessorNode | null = null;
   let socket: WebSocket | null = null;
   let active = false;
+  let keepaliveInterval: ReturnType<typeof setInterval> | null = null;
 
   const cleanup = () => {
+    if (keepaliveInterval) {
+      clearInterval(keepaliveInterval);
+      keepaliveInterval = null;
+    }
     socket?.close();
     socket = null;
     processor?.disconnect();
@@ -53,6 +58,15 @@ export const createDeepgramSTT = (
 
       socket.onopen = () => {
         if (!processor || !source || !audioCtx) return;
+        
+        // Send keepalive every 5 seconds to prevent timeout
+        if (keepaliveInterval) clearInterval(keepaliveInterval);
+        keepaliveInterval = setInterval(() => {
+          if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: "KeepAlive" }));
+          }
+        }, 5000);
+
         processor.onaudioprocess = (event) => {
           if (!socket || socket.readyState !== WebSocket.OPEN) return;
           const inputData = event.inputBuffer.getChannelData(0);
@@ -80,14 +94,23 @@ export const createDeepgramSTT = (
       };
 
       socket.onerror = () => {
-        options.onError?.(new Error("Deepgram socket error"));
-        stop();
-      };
-      socket.onclose = () => {
+        console.warn("Deepgram socket error, attempting reconnect...");
+        cleanup();
         if (active) {
-          options.onError?.(new Error("Deepgram socket closed"));
+          setTimeout(() => {
+            if (active) void start();
+          }, 2000);
         }
-        stop();
+      };
+      
+      socket.onclose = () => {
+        console.warn("Deepgram socket closed, attempting reconnect...");
+        cleanup();
+        if (active) {
+          setTimeout(() => {
+            if (active) void start();
+          }, 2000);
+        }
       };
     } catch (error) {
       options.onError?.(error as Error);
