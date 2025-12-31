@@ -10,6 +10,10 @@ declare global {
 
       // app base url
       NEXT_PUBLIC_BASE_URL: string;
+
+      // live translator
+      TRANSLATE_API_URL?: string;
+      TRANSLATE_API_KEY?: string;
     }
   }
 }

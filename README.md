@@ -143,6 +143,10 @@ STREAM_SECRET_KEY=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 # app base url
 NEXT_PUBLIC_BASE_URL=http://localhost:3000
 
+# live translator (LibreTranslate or compatible API)
+TRANSLATE_API_URL=https://libretranslate.com/translate
+TRANSLATE_API_KEY=
+
 ```
 
 ### 5. Obtain Clerk Authentication Keys
@@ -188,9 +192,14 @@ NEXT_PUBLIC_BASE_URL=http://localhost:3000
 
 - Save the changes to the `.env.local` file.
 
-10. Install Project Dependencies using `npm install --legacy-peer-deps` or `yarn install --legacy-peer-deps`.
+### 10. Configure Live Translator (optional)
 
-11. Now app is fully configured 👍 and you can start using this app using either one of `npm run dev` or `yarn dev`.
+- Set `TRANSLATE_API_URL` to a LibreTranslate-compatible endpoint.
+- Set `TRANSLATE_API_KEY` if your provider requires authentication.
+
+11. Install Project Dependencies using `npm install --legacy-peer-deps` or `yarn install --legacy-peer-deps`.
+
+12. Now app is fully configured 👍 and you can start using this app using either one of `npm run dev` or `yarn dev`.
 
 **NOTE:** Please make sure to keep your API keys and configuration values secure and do not expose them publicly.
 
